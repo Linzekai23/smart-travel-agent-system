@@ -55,7 +55,7 @@ function AmapCard({ item }: { item: AmapItem }) {
     <Card size="small" className="h-full">
       <div className="font-medium text-slate-800">{item.name}</div>
       <div className="mt-2">
-        <AttractionImage name={item.name} photoUrl={item.photo_url} />
+        <AttractionImage name={item.name} photoUrl={item.photo_url ?? undefined} />
       </div>
       {item.address && (
         <div className="mt-2 flex items-center gap-1 text-xs text-slate-500">
@@ -178,7 +178,7 @@ export default function Guide() {
                           <AttractionImage
                             name={a.name}
                             city={city}
-                            photoUrl={a.photo_url}
+                            photoUrl={a.photo_url ?? undefined}
                           />
                         </div>
                         {a.tags?.length ? (

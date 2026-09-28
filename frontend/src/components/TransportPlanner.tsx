@@ -117,7 +117,7 @@ export default function TransportPlanner() {
       if (!resp.ok) throw new Error(`请求失败 (${resp.status})`);
       setResult(await resp.json());
     } catch {
-      setResult({ ok: false, source: "error", message: "查询失败，请稍后重试" });
+      setResult({ ok: false, source: "error", mode, message: "查询失败，请稍后重试" });
     } finally {
       setLoading(false);
     }
