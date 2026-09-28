@@ -118,20 +118,46 @@ class VectorStore:
         province: str | None = None,
         category: str | None = None,
         k: int = 10,
+        rrf_weight: float = 0.0,
+        rrf_k: int = 10,
     ) -> list[dict]:
-        """向量检索；text 为空时退化为 metadata 过滤 + rating 降序。"""
+        """向量检索；text 为空时退化为 metadata 过滤 + rating 降序。
+
+        rrf_weight > 0 时启用 RRF 混合排序（语义排名 + 热度排名倒数融合）：
+        余弦相似度与 rating 量纲不可比，RRF 只用**排名**、免归一化。
+        rrf_weight = 0（默认）即纯语义，与旧行为完全一致。
+        依据见 docs/retrieval-eval.md：纯语义在"著名景点"类查询上会输给评分排序。
+        """
         indices = self._filter_indices(city, province, category)
         if text.strip():
             if self._matrix is None or not indices:
                 return []
             q = np.asarray(self._embedder.embed_query(text), dtype="float32")
             scores = self._matrix[indices] @ q  # L2 归一化向量 → 点积即余弦
-            order = np.argsort(-scores)[:k]
+            if rrf_weight > 0:
+                order = self._rrf_order(indices, scores, k, rrf_weight, rrf_k)
+            else:
+                order = np.argsort(-scores)[:k]
             return [_poi_dict(self._records[pid]) for pid in (self._ids()[indices][order])]
         order = sorted(indices,
                        key=lambda i: float(self._records[self._ids()[i]].get("rating") or 0),
                        reverse=True)[:k]
         return [_poi_dict(self._records[self._ids()[i]]) for i in order]
+
+    def _rrf_order(self, indices, scores, k: int, weight: float, rrf_k: int):
+        """RRF：1/(K+语义排名) + weight/(K+热度排名)，返回 top-k 的局部下标。"""
+        ids = self._ids()
+        n = len(indices)
+        sem_rank = np.empty(n, dtype="int64")
+        sem_rank[np.argsort(-scores)] = np.arange(n)
+        ratings = np.array(
+            [float(self._records[ids[i]].get("rating") or 0) for i in indices],
+            dtype="float64",
+        )
+        rat_rank = np.empty(n, dtype="int64")
+        rat_rank[np.argsort(-ratings)] = np.arange(n)
+        fused = 1.0 / (rrf_k + sem_rank + 1) + weight / (rrf_k + rat_rank + 1)
+        return np.argsort(-fused)[:k]
 
     def get_all(
         self,

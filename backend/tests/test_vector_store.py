@@ -48,6 +48,60 @@ def test_query_empty_text_sorts_by_rating(tmp_path):
     assert hits[0]["poi_id"] == "test-002"  # rating 高者在前
 
 
+def test_rrf_zero_is_backward_compatible(tmp_path):
+    """rrf_weight=0（默认）必须与加混合排序之前的行为逐位一致。"""
+    store = VectorStore(str(tmp_path / "chroma"), FakeEmbedder())
+    store.upsert_pois([
+        _poi(1, name="故宫博物院", rating=4.0),
+        _poi(2, name="天安门广场", rating=4.9),
+    ])
+    assert (store.query("故宫", city="北京", k=2)
+            == store.query("故宫", city="北京", k=2, rrf_weight=0.0))
+
+
+def test_rrf_blends_semantic_and_rating(tmp_path):
+    """RRF 的两端行为：权重为 0 看语义，权重极大退化为看评分。
+
+    语料：语义最强（名字含"故宫"）的评分最低，评分最高的语义最弱——
+    这样两个端点必然给出**相反**的排序，能证明融合真的在起作用。
+    """
+    store = VectorStore(str(tmp_path / "chroma"), FakeEmbedder())
+    store.upsert_pois([
+        _poi(1, name="故宫博物院", rating=4.0),   # 语义强、评分低
+        _poi(2, name="天安门广场", rating=4.9),   # 语义弱、评分高
+    ])
+    pure = store.query("故宫", city="北京", k=2, rrf_weight=0.0)
+    assert pure[0]["poi_id"] == "test-001"        # 纯语义：含"故宫"的在前
+
+    heavy = store.query("故宫", city="北京", k=2, rrf_weight=1000.0)
+    assert heavy[0]["poi_id"] == "test-002"       # 权重极大：高评分仅剩热度项主导
+
+
+def test_rrf_only_applies_to_text_queries(tmp_path):
+    """空查询本就按评分降序，rrf_weight 不应改变它。"""
+    store = VectorStore(str(tmp_path / "chroma"), FakeEmbedder())
+    store.upsert_pois([
+        _poi(1, name="普通景点", rating=4.0),
+        _poi(2, name="高分景点", rating=4.9),
+    ])
+    assert ([p["poi_id"] for p in store.query("", city="北京", k=2)]
+            == [p["poi_id"] for p in store.query("", city="北京", k=2, rrf_weight=5.0)])
+
+
+def test_rrf_does_not_change_candidate_pool(tmp_path):
+    """融合只影响 top-k 的挑选与排序，不改变区域过滤出的候选池。
+
+    注意：k 小于候选池时，两者**选出的子集本来就可以不同**——
+    所以这里让 k 覆盖整个池，断言集合一致、只是顺序可能变。
+    """
+    store = VectorStore(str(tmp_path / "chroma"), FakeEmbedder())
+    store.upsert_pois([_poi(i, name=f"景点{i}", rating=4.0 + i * 0.1) for i in range(1, 8)])
+    pure = [p["poi_id"] for p in store.query("景点", city="北京", k=7, rrf_weight=0.0)]
+    fused = [p["poi_id"] for p in store.query("景点", city="北京", k=7, rrf_weight=0.75)]
+    assert sorted(pure) == sorted(fused)          # 候选池一致
+    assert len(store.get_all(city="北京")) == 7   # 过滤层不受排序参数影响
+
+
 def test_get_all_and_poi_shape(tmp_path):
     store = VectorStore(str(tmp_path / "chroma"), FakeEmbedder())
     store.upsert_pois([_poi(1, tags=["历史", "免费"]), _poi(2, city="成都", province="四川")])

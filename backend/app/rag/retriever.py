@@ -20,6 +20,13 @@ _CITY_ALIASES.update({en: c for c, en in CITY_EN.items()})
 
 _store: VectorStore | None = None
 
+# RRF 混合排序默认参数（网格搜索见 backend/eval_report.md）：
+#   0 = 纯语义（改动前行为）；>0 = 语义排名 + 热度排名倒数融合。
+# 依据 docs/retrieval-eval.md：纯语义在"著名景点/必去"类查询上系统性劣于评分排序，
+# 而在"属性"类查询上更优；RRF 用来同时拿到两边的收益。
+RRF_WEIGHT = 0.75
+RRF_K = 10
+
 
 def set_store(store: VectorStore | None) -> None:
     """测试注入点：替换全局检索存储（FakeEmbedder 版）。"""
@@ -82,11 +89,15 @@ def search_pois(
     query: str | None = None,
     k: int = 8,
 ) -> list[dict]:
-    """三级粒度检索：库内城市→该市；库外城市/直接省名→全省。"""
+    """三级粒度检索：库内城市→该市；库外城市/直接省名→全省。
+
+    排序用 RRF 混合（语义 + 热度），参数见 RRF_WEIGHT / RRF_K。
+    """
     province, city = _resolve(name)
     if province is None:
         return []
-    return get_store().query(query or "", city=city, province=province, k=k)
+    return get_store().query(query or "", city=city, province=province, k=k,
+                             rrf_weight=RRF_WEIGHT, rrf_k=RRF_K)
 
 
 def get_poi(poi_id: str) -> dict | None:
