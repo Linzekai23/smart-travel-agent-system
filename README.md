@@ -16,13 +16,14 @@ FastAPI 后端 + React 前端，SSE 实时推送协作过程。
 | 后端 | Python 3.11+ · FastAPI · LangGraph（含 langgraph-checkpoint-sqlite 会话持久化） · SQLite · httpx · Pillow（酒店照片择优评分） |
 | LLM | DeepSeek（OpenAI 兼容，JSON 模式） |
 | **RAG 知识库** | **BGE（bge-small-zh-v1.5，ModelScope 下载）+ 自建 numpy 向量库**，全国 34 省级行政区 1000+ 著名景点（省份-城市-景点三级粒度检索） |
+| **MCP** | fastmcp（stdio）—— 景点检索/天气已封装为 MCP Server，Claude Desktop 可直接调用（[docs/mcp.md](docs/mcp.md)） |
 | 前端 | React 19 · Vite · TypeScript · Tailwind v4 · **Ant Design v5** · Leaflet / react-leaflet |
 | 实时通信 | SSE（ping / agent_status / itinerary_update 事件） |
 
 ## 目录结构
 
 ```
-backend/   FastAPI + LangGraph（agents/ 5 个 Agent · rag/ 向量知识库 · tools/ 天气 · llm/ Provider · api/ 含 trips/route/guide）
+backend/   FastAPI + LangGraph（agents/ 5 个 Agent · rag/ 向量知识库 · tools/ 天气 · llm/ Provider · api/ 含 trips/route/guide）+ mcp_server.py（MCP Server）
 frontend/  React 首页导航式（App.tsx 按 view 切换：助手 + 我的行程/交通规划/攻略浏览/出行清单；components/ 含地图/图片/工作流组件）
 docs/      架构文档与各里程碑设计文档
 scripts/   一键启动脚本（bash scripts/dev.sh）
@@ -95,7 +96,7 @@ npm run dev        # http://localhost:5173（/api 代理到 :8000）
 ## 测试
 
 ```bash
-cd backend && .venv/Scripts/python -m pytest -q   # 212 tests 全部 mock（FakeProvider/FakeEmbedder），无需 API Key、无需模型、无网络
+cd backend && .venv/Scripts/python -m pytest -q   # 247 tests 全部 mock（FakeProvider/FakeEmbedder），无需 API Key、无需模型、无网络
 cd frontend && npm run build && npm run lint      # 前端门禁：tsc + vite 构建 + oxlint
 ```
 
@@ -141,6 +142,16 @@ k=8 的定位是"给 Planner 够用的候选"，不是"召回全部答案"。
 > 诚实声明：50 条为单人标注、无双人一致性校验；语料为 AI 生成，评分分布与真实平台不同，
 > **绝对值不可外推，变体间的相对比较才是本次实验的价值**。
 > 参数网格搜索在 50 条上有过拟合风险，选 w=0.75 而非网格最优组，正是为了避开尖峰。
+
+## MCP Server（2026-10）
+
+景点语义检索与天气查询已封装为独立 MCP Server（fastmcp，stdio 协议），Claude Desktop 等 MCP 客户端可直接调用知识库工具，支持多工具编排（检索景点坐标 → 查天气）：
+
+```bash
+cd backend && .venv/Scripts/python -m mcp_server   # stdio 运行；客户端配置与冒烟验证见 docs/mcp.md
+```
+
+选型说明：主链路（LangGraph 5 Agent）保持原生工具调用——单应用内 MCP 引入的序列化/协议开销没有收益；MCP 化的价值在**工具跨应用复用与生态互通**，以独立 server 形式先打通验证。新增 8 个内存 Client 测试（[tests/test_mcp_server.py](backend/tests/test_mcp_server.py)）。
 
 ## 里程碑
 
