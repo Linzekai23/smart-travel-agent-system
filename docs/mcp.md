@@ -29,7 +29,7 @@ cd backend
 
 ## 接入 Claude Desktop
 
-编辑 `%APPDATA%\Claude\claude_desktop_config.json`：
+**标准版**：编辑 `%APPDATA%\Claude\claude_desktop_config.json`：
 
 ```json
 {
@@ -43,11 +43,29 @@ cd backend
 }
 ```
 
+**3p / 第三方网关构建**（模型走本地网关，配置由 CC Switch 这类工具管理；本机实测环境即此）：
+配置不在 `%APPDATA%\Claude\`，而在 `%LOCALAPPDATA%\Claude-3p\configLibrary\<配置 id>.json`
+的 `managedMcpServers` 数组（字段：`name` / `transport: "stdio"` / `command` / `args`）：
+
+```json
+"managedMcpServers": [
+  {
+    "name": "travel-assistant",
+    "transport": "stdio",
+    "command": "d:\\智能旅行系统\\backend\\.venv\\Scripts\\python.exe",
+    "args": ["d:\\智能旅行系统\\backend\\mcp_server.py"]
+  }
+]
+```
+
+> 接入后 `%LOCALAPPDATA%\Claude-3p\custom3p-mcp-schemas.json` 会缓存工具 schema
+> （本机已见 `travel-assistant` 下两个工具）——可用来确认 server 已加载。
+
 要点：
 
 - Windows 下 `command`/`args` 用**绝对路径**（`python` 可能不在客户端 PATH 里）；
 - `args` 用 mcp_server.py 全路径后，即使 `cwd` 被忽略，脚本目录也会进入 `sys.path`，`import app` 依旧成立（双保险）；
-- 改完在托盘**完全退出** Claude Desktop 再重启（关窗口不够）。
+- 改完在托盘**完全退出** Claude Desktop 再重启（关窗口不够）；3p 版改完 configLibrary 同样要重启。
 
 演示问句：
 
