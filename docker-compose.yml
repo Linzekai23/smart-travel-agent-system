@@ -1,0 +1,39 @@
+# 智能旅行系统 · 一键启动：docker compose up -d --build
+# 架构：浏览器 → web(Nginx) ──静态文件 + /api/ 反代──→ backend(uvicorn :8000)
+name: travel-assistant
+
+services:
+  backend:
+    build: ./backend
+    # backend/.env 提供 DEEPSEEK_API_KEY / AMAP_KEY 等（被 gitignore，不入库；
+    # 文件缺失时服务照常启动，仅聊天功能返回 503）
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # 容器内钉死数据路径（代码默认值是相对 CWD 的 data/…，显式指定更稳）
+      TRAVEL_DB_PATH: /app/backend/data/travel.db
+      POI_CORPUS_PATH: /app/backend/data/poi_corpus.jsonl
+    volumes:
+      # 挂载本机数据目录：BGE 模型 / 向量库 / 语料 / SQLite（约 200MB，不进镜像）
+      - ./backend/data:/app/backend/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      # /api/health 恒返回 200（不检查 LLM 可用性），仅用于判断进程已就绪
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build: ./frontend
+    ports:
+      # 默认映射宿主机 8080；可用 PORT 覆盖（冲突时 PORT=8888 docker compose up -d）
+      - "${PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

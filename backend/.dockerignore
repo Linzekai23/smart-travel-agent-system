@@ -1,0 +1,8 @@
+# 数据与模型不进镜像：运行时由 compose 以卷挂载（backend/data 约 200MB，且 SQLite 需可写）
+data/
+.venv/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/

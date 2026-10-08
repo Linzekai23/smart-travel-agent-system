@@ -19,6 +19,7 @@ FastAPI 后端 + React 前端，SSE 实时推送协作过程。
 | **MCP** | fastmcp（stdio）—— 景点检索/天气已封装为 MCP Server，Claude Desktop 可直接调用（[docs/mcp.md](docs/mcp.md)） |
 | 前端 | React 19 · Vite · TypeScript · Tailwind v4 · **Ant Design v5** · Leaflet / react-leaflet |
 | 实时通信 | SSE（ping / agent_status / itinerary_update 事件） |
+| 部署 | Docker Compose（Nginx 反代 + 多阶段构建 · torch CPU 版） |
 
 ## 目录结构
 
@@ -27,6 +28,7 @@ backend/   FastAPI + LangGraph（agents/ 5 个 Agent · rag/ 向量知识库 · 
 frontend/  React 首页导航式（App.tsx 按 view 切换：助手 + 我的行程/交通规划/攻略浏览/出行清单；components/ 含地图/图片/工作流组件）
 docs/      架构文档与各里程碑设计文档
 scripts/   一键启动脚本（bash scripts/dev.sh）
+部署       docker-compose.yml · backend/Dockerfile · frontend/Dockerfile（Docker 一键部署）
 ```
 
 ## 功能清单
@@ -92,6 +94,29 @@ npm run dev        # http://localhost:5173（/api 代理到 :8000）
 
 > 语料为 **AI 生成示例数据，坐标仅供参考**；餐厅/酒店数据来自高德地图，营业信息可能变动。
 > 如某城景点数据不理想，可编辑 `backend/data/poi_corpus.jsonl` 后重跑 `python -m app.rag.ingest` 增量入库。
+
+## Docker 部署（推荐：一条命令跑起前后端）
+
+前后端与反向代理已容器化：Nginx 托管前端静态文件，并把 `/api/` 反代到后端容器（同源，无跨域问题）。
+
+```bash
+cp backend/.env.example backend/.env   # 填入 DEEPSEEK_API_KEY（必需）与 AMAP_KEY（可选）
+docker compose up -d --build
+```
+
+浏览器打开 **http://localhost:8080** 即为完整应用。端口冲突时用 `PORT=8888 docker compose up -d`。
+
+- 后端 `backend/data/`（BGE 模型 / 向量库 / 语料 / SQLite，约 200MB，全部被 gitignore）以卷挂载进容器，容器与本机开发共享同一份数据。
+- BGE 模型是**首次检索时懒加载**：第一次聊天 / 攻略请求多等 10~40 秒属正常，之后保持常驻（约 1GB 内存）。
+- 常用命令：`docker compose logs -f backend`（后端日志）、`docker compose down`（停止）、`docker compose up -d --build`（重建）。
+
+**迁移到云服务器**：服务器装好 Docker 后，上传仓库与 `backend/data/` 目录，执行 `docker compose up -d --build`，开放端口后访问 `http://服务器IP:8080` 即可。若数据不便上传，也可用容器重建 RAG 数据（`download_model` 走 ModelScope，国内可达）：
+
+```bash
+docker compose exec backend python -m app.rag.download_model
+docker compose exec backend python -m app.rag.generate
+docker compose exec backend python -m app.rag.ingest
+```
 
 ## 测试
 
